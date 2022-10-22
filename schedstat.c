@@ -155,7 +155,8 @@ int main(int argc, char *argv[])
 	    get_datetime(datebuf);
 
 	    if (verbose)
-		printf("%s %ld(%ld) %ld(%ld) %ld(%ld) %ld %ld\n",
+		printf("%s %s %ld(%ld) %ld(%ld) %ld(%ld) %ld %ld\n",
+		    datebuf,
 		    id, run_time, run_time - orun_time,
 		    wait_time, wait_time - owait_time,
 		    nran, nran - oran,
