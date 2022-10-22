@@ -15,6 +15,7 @@
  *	http://eaglet.pdxhosts.com/rick/linux/schedstat/v12/latency.c
  *	copyright Rick Lindsey 2004.
  */
+#include <time.h>
 #include <stdio.h>
 #include <getopt.h>
 #include <stdlib.h>
@@ -22,9 +23,9 @@
 #include <ctype.h>
 #include <unistd.h>
 
-extern char *index(), *rindex();
 char procbuf[512];
 char statname[64];
+char datebuf[20];
 char *Progname;
 FILE *fp;
 
@@ -91,6 +92,20 @@ void get_id(char *buf, char *id)
     return;
 }
 
+/*
+ * get_datetime
+ */
+
+void get_datetime(char *buf) 
+{
+	time_t ltime;
+	struct tm *ldt;
+
+	ltime = time(NULL);
+	ldt = localtime(&ltime);
+	sprintf(buf, "%02d:%02d:%02d", ldt->tm_hour, ldt->tm_min, ldt->tm_sec);
+}
+
 int main(int argc, char *argv[])
 {
     int c;
@@ -137,6 +152,7 @@ int main(int argc, char *argv[])
 		    break;
 
 	    get_stats(procbuf, &run_time, &wait_time, &nran);
+	    get_datetime(datebuf);
 
 	    if (verbose)
 		printf("%s %ld(%ld) %ld(%ld) %ld(%ld) %ld %ld\n",
@@ -146,7 +162,8 @@ int main(int argc, char *argv[])
 			(run_time-orun_time) ,
 			(wait_time-owait_time));
 	    else
-		printf("%s run=%ldns wait=%ldns\n",
+		printf("%s %s run=%ldns wait=%ldns\n",
+		    datebuf,
 		    id, 
 		    (run_time-orun_time), 
 		    (wait_time-owait_time));
