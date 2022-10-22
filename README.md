@@ -1,2 +1,2 @@
 # schedstat
-schedstat measures time spent by a process in Linux scheduler run queue
+schedstat measures time spent by a Linux process in scheduler run queue
