@@ -153,7 +153,7 @@ int main(int argc, char *argv[])
     ptr = pidlist; 
     i = 0;
     while ( i < MAX_PROCS && ptr < pidlist + strlen(pidlist)) {
-        while (*ptr && (isblank(*ptr) || ispunct(*ptr)))
+        while (*ptr && *ptr == ',') 
             ptr++;
 	pidtab[i].pid = atoi(ptr);
 	pidtab[i].ok = 0;
