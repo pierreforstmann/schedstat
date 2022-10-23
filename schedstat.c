@@ -23,15 +23,31 @@
 #include <ctype.h>
 #include <unistd.h>
 
-char procbuf[512];
-char statname[64];
-char datebuf[20];
+#define PROCBUF_MAX_LENGTH	512
+#define STATNAME_MAX_LENGTH 	64	
+#define DATEBUF_MAX_LENGTH	20
+#define MAX_PROCS		64
+
+typedef struct piddata {
+	int pid;
+	int ok;
+	unsigned long run_time;
+	unsigned long wait_time;
+	unsigned long old_run_time;
+	unsigned long old_wait_time;
+
+} piddata;
+
+char procbuf[PROCBUF_MAX_LENGTH];
+char statname[STATNAME_MAX_LENGTH];
+char datebuf[DATEBUF_MAX_LENGTH];
+piddata  pidtab[MAX_PROCS];
 char *Progname;
 FILE *fp;
 
 void usage()
 {
-    fprintf(stderr,"Usage: %s [-s sleeptime ] [-v] <pid>\n", Progname);
+    fprintf(stderr,"Usage: %s [-s sleeptime ] [-v] -p <pid,pid,...>\n", Progname);
     exit(-1);
 }
 
@@ -40,13 +56,12 @@ void usage()
  *	fields of the line we are handed, and further, that they contain
  *	only numbers and single spaces.
  */
-void get_stats(char *buf, unsigned long *run_time, unsigned long *wait_time,
-    unsigned long *nran)
+void get_stats(char *buf, unsigned long *run_time, unsigned long *wait_time)
 {
     char *ptr;
 
     /* sanity */
-    if (!buf || !run_time || !wait_time || !nran)
+    if (!buf || !run_time || !wait_time)
 	return;
 
     /* leading blanks */
@@ -68,8 +83,6 @@ void get_stats(char *buf, unsigned long *run_time, unsigned long *wait_time,
     while (*ptr && isblank(*ptr))
 	ptr++;
 
-    /* last number -- nran */
-    *nran = atol(ptr);
 }
 
 /*
@@ -93,7 +106,7 @@ void get_id(char *buf, char *id)
 }
 
 /*
- * get_datetime
+ * get_datetime -- get current date and time
  */
 
 void get_datetime(char *buf) 
@@ -108,15 +121,16 @@ void get_datetime(char *buf)
 
 int main(int argc, char *argv[])
 {
-    int c;
-    unsigned int sleeptime = 5, pid = 0, verbose = 0;
+    int c, i;
+    unsigned int sleeptime = 1, verbose = 0;
     char id[32];
-    unsigned long run_time, wait_time, nran;
-    unsigned long orun_time=0, owait_time=0, oran=0;
+    char *pidlist, *ptr;
+    int pidcount;
 
     Progname = argv[0];
     id[0] = 0;
-    while ((c = getopt(argc,argv,"s:hv")) != -1) {
+    pidlist = NULL;
+    while ((c = getopt(argc,argv,"p:s:hv")) != -1) {
 	switch (c) {
 	    case 's':
 		sleeptime = atoi(optarg);
@@ -124,62 +138,90 @@ int main(int argc, char *argv[])
 	    case 'v':
 		verbose++;
 		break;
+	    case 'p':
+		pidlist = optarg;
+		break;
 	    default:
 		usage();
 	}
     }
 
-    if (optind < argc) {
-	pid = atoi(argv[optind]);
+    if (pidlist == NULL) {
+	    usage();
     }
+     
+    ptr = pidlist; 
+    i = 0;
+    while ( i < MAX_PROCS && ptr < pidlist + strlen(pidlist)) {
+        while (*ptr && (isblank(*ptr) || ispunct(*ptr)))
+            ptr++;
+	pidtab[i].pid = atoi(ptr);
+	pidtab[i].ok = 0;
+	pidtab[i].run_time = 0;
+	pidtab[i].wait_time = 0;
+	pidtab[i].old_run_time = 0;
+	pidtab[i].old_wait_time = 0;
+	i++;
+	if ( i == MAX_PROCS) {
+		printf("Too many pid specified (max. is %d) \n", MAX_PROCS);
+		exit(-1);
+	}
+        while (*ptr && isdigit(*ptr))
+            ptr++;
+    }
+    pidcount = i;
 
-    if (!pid)
-	usage();
-
-    sprintf(statname,"/proc/%d/stat", pid);
-    if ((fp = fopen(statname, "r")) != NULL) {
-	if (fgets(procbuf, sizeof(procbuf), fp))
-	    get_id(procbuf,id);
-	fclose(fp);
+    for (i = 0 ; i < pidcount ; i++) {
+        sprintf(statname,"/proc/%d/stat", pidtab[i].pid);
+        if ((fp = fopen(statname, "r")) != NULL) {
+       	    printf("pid %d OK \n", pidtab[i].pid);
+	    pidtab[i].ok = 1;
+	    fclose(fp);
+            }
+	else {
+       	    printf("pid %d does not exist \n", pidtab[i].pid);
+	    exit(-1);
+	}
     }
 
     /*
      * now just spin collecting the stats
      */
-    sprintf(statname,"/proc/%d/schedstat", pid);
-    while ((fp = fopen(statname, "r")) != NULL) {
-	    if (!fgets(procbuf, sizeof(procbuf), fp))
-		    break;
+    while (1) {
+      for (i = 0 ; i < pidcount ; i++) {
+	if (pidtab[i].ok == 0)
+		continue;
+        sprintf(statname,"/proc/%d/schedstat", pidtab[i].pid);
+        if ((fp = fopen(statname, "r")) != NULL) {
+	        if (!fgets(procbuf, sizeof(procbuf), fp)) {
+	            pidtab[i].ok = 0;
+  	            printf("pid %d has exited \n", pidtab[i].pid);
+		    continue;
+		}
 
-	    get_stats(procbuf, &run_time, &wait_time, &nran);
-	    get_datetime(datebuf);
+	        get_stats(procbuf, &pidtab[i].run_time, &pidtab[i].wait_time);
+	        get_datetime(datebuf);
 
-	    if (verbose)
-		printf("%s %s %ld(%ld) %ld(%ld) %ld(%ld) %ld %ld\n",
-		    datebuf,
-		    id, run_time, run_time - orun_time,
-		    wait_time, wait_time - owait_time,
-		    nran, nran - oran,
-			(run_time-orun_time) ,
-			(wait_time-owait_time));
-	    else
-		printf("%s %s run=%ldns wait=%ldns\n",
-		    datebuf,
-		    id, 
-		    (run_time-orun_time), 
-		    (wait_time-owait_time));
-	    fclose(fp);
-	    oran = nran;
-	    orun_time = run_time;
-	    owait_time = wait_time;
-	    sleep(sleeptime);
-	    fp = fopen(statname,"r");
-	    if (!fp)
-		    break;
+	        if (verbose)
+		     printf("%s %d %ld %ld \n",
+		         datebuf,
+		         pidtab[i].pid, pidtab[i].run_time, pidtab[i].wait_time);
+	        else
+		    printf("%s %d run=%ldns wait=%ldns\n",
+		        datebuf,
+		        pidtab[i].pid,
+		       (pidtab[i].run_time - pidtab[i].old_run_time), 
+		       (pidtab[i].wait_time - pidtab[i].old_wait_time));
+	        fclose(fp);
+	        pidtab[i].old_run_time = pidtab[i].run_time;
+	        pidtab[i].old_wait_time = pidtab[i].wait_time;
+	        sleep(sleeptime);
+        }
+	else {
+	    pidtab[i].ok = 0;
+	    printf("pid %d has exited \n", pidtab[i].pid);
+      }
     }
-    if (id[0])
-	printf("Process %s has exited.\n", id);
-    else 
-	printf("Process %d does not exist.\n", pid);
-    exit(0);
+  }
+  exit(0);
 }
