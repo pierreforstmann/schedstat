@@ -121,7 +121,7 @@ void get_datetime(char *buf)
 
 int main(int argc, char *argv[])
 {
-    int c, i;
+    int c, i, pid_processed_count = 0;
     unsigned int sleeptime = 1, verbose = 0;
     char id[32];
     char *pidlist, *ptr;
@@ -188,6 +188,7 @@ int main(int argc, char *argv[])
      * now just spin collecting the stats
      */
     while (1) {
+      pid_processed_count = 0; 
       for (i = 0 ; i < pidcount ; i++) {
 	if (pidtab[i].ok == 0)
 		continue;
@@ -199,6 +200,7 @@ int main(int argc, char *argv[])
 		    continue;
 		}
 
+		pid_processed_count++;
 	        get_stats(procbuf, &pidtab[i].run_time, &pidtab[i].wait_time);
 	        get_datetime(datebuf);
 
@@ -221,6 +223,10 @@ int main(int argc, char *argv[])
 	    pidtab[i].ok = 0;
 	    printf("pid %d has exited \n", pidtab[i].pid);
       }
+    }
+    if (pid_processed_count == 0) {
+	    printf("all pid have exited.\n") ;
+	    exit(0);
     }
   }
   exit(0);
