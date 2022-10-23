@@ -4,16 +4,11 @@
  *      schedstat measures the scheduling latency of a particular process from
  *	the extra information provided in /proc/<pid>stat. 
  *
- *	PLEASE NOTE: This program does NOT check to make sure that extra 
- *	information is there; it assumes the last three fields in that line 
- *	are the ones it's interested in.  
- *
- *	This currently monitors only one pid at a time but could easily
- *	be modified to do more.
- *
  *	Initial code  
  *	http://eaglet.pdxhosts.com/rick/linux/schedstat/v12/latency.c
  *	copyright Rick Lindsey 2004.
+ *	Modified code
+ *	copyright Pierre Forstmann 2022.
  */
 #include <time.h>
 #include <stdio.h>
@@ -86,26 +81,6 @@ void get_stats(char *buf, unsigned long *run_time, unsigned long *wait_time)
 }
 
 /*
- * get_id() -- extract the id field from that /proc/<pid>/stat file
- */
-void get_id(char *buf, char *id)
-
-{
-    char *ptr;
-
-    /* sanity */
-    if (!buf || !id)
-	return;
-
-    ptr = index(buf, ')') + 1;
-    *ptr = 0;
-    strcpy(id, buf);
-    *ptr = ' ';
-
-    return;
-}
-
-/*
  * get_datetime -- get current date and time
  */
 
@@ -123,12 +98,10 @@ int main(int argc, char *argv[])
 {
     int c, i, pid_processed_count = 0;
     unsigned int sleeptime = 1, verbose = 0;
-    char id[32];
     char *pidlist, *ptr;
     int pidcount;
 
     Progname = argv[0];
-    id[0] = 0;
     pidlist = NULL;
     while ((c = getopt(argc,argv,"p:s:hv")) != -1) {
 	switch (c) {
@@ -225,7 +198,7 @@ int main(int argc, char *argv[])
       }
     }
     if (pid_processed_count == 0) {
-	    printf("all pid have exited.\n") ;
+	    printf("all processes have exited.\n") ;
 	    exit(0);
     }
   }
