@@ -2,7 +2,7 @@
  *      schedstat.c
  *
  *      schedstat measures the scheduling latency of a particular process from
- *	the extra information provided in /proc/<pid>stat. 
+ *	the information provided in /proc/<pid>/schedstat. 
  *
  *	Initial code  
  *	http://eaglet.pdxhosts.com/rick/linux/schedstat/v12/latency.c
