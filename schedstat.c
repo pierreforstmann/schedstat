@@ -119,6 +119,10 @@ int main(int argc, char *argv[])
 	}
     }
 
+    if (optind != argc) {
+	    usage();
+    }
+
     if (pidlist == NULL) {
 	    usage();
     }
@@ -128,6 +132,9 @@ int main(int argc, char *argv[])
     while ( i < MAX_PROCS && ptr < pidlist + strlen(pidlist)) {
         while (*ptr && *ptr == ',') 
             ptr++;
+	if (!isdigit(*ptr)) {
+		usage();
+	}
 	pidtab[i].pid = atoi(ptr);
 	pidtab[i].ok = 0;
 	pidtab[i].run_time = 0;
