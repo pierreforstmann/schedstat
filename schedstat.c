@@ -4,10 +4,11 @@
  *      schedstat measures the scheduling latency of a particular process from
  *	the information provided in /proc/<pid>/schedstat. 
  *
- *	Initial code  
+ *	Initial code:
  *	http://eaglet.pdxhosts.com/rick/linux/schedstat/v12/latency.c
  *	copyright Rick Lindsey 2004.
- *	Modified code
+ *
+ *	Modified code:
  *	copyright Pierre Forstmann 2022.
  */
 #include <time.h>
@@ -33,16 +34,20 @@ typedef struct piddata {
 
 } piddata;
 
+/*
+ * global variables
+ */
+
 char procbuf[PROCBUF_MAX_LENGTH];
 char statname[STATNAME_MAX_LENGTH];
 char datebuf[DATEBUF_MAX_LENGTH];
 piddata  pidtab[MAX_PROCS];
-char *Progname;
+char *progname;
 FILE *fp;
 
 void usage()
 {
-    fprintf(stderr,"Usage: %s [-s sleeptime ] [-v] -p <pid,pid,...>\n", Progname);
+    fprintf(stderr,"Usage: %s [-s sleeptime ] [-v] -p <pid,pid,...>\n", progname);
     exit(-1);
 }
 
@@ -94,39 +99,15 @@ void get_datetime(char *buf)
 	sprintf(buf, "%02d:%02d:%02d", ldt->tm_hour, ldt->tm_min, ldt->tm_sec);
 }
 
-int main(int argc, char *argv[])
+/*
+ * init_pidtab -- initialize list of process identifiers
+ */
+
+void init_pidtab(char *pidlist, int *pidcount)
 {
-    int c, i, pid_processed_count = 0;
-    unsigned int sleeptime = 1, verbose = 0;
-    char *pidlist, *ptr;
-    int pidcount;
+    char *ptr;
+    int i;
 
-    Progname = argv[0];
-    pidlist = NULL;
-    while ((c = getopt(argc,argv,"p:s:hv")) != -1) {
-	switch (c) {
-	    case 's':
-		sleeptime = atoi(optarg);
-		break;
-	    case 'v':
-		verbose++;
-		break;
-	    case 'p':
-		pidlist = optarg;
-		break;
-	    default:
-		usage();
-	}
-    }
-
-    if (optind != argc) {
-	    usage();
-    }
-
-    if (pidlist == NULL) {
-	    usage();
-    }
-     
     ptr = pidlist; 
     i = 0;
     while ( i < MAX_PROCS && ptr < pidlist + strlen(pidlist)) {
@@ -149,9 +130,9 @@ int main(int argc, char *argv[])
         while (*ptr && isdigit(*ptr))
             ptr++;
     }
-    pidcount = i;
+    *pidcount = i;
 
-    for (i = 0 ; i < pidcount ; i++) {
+    for (i = 0 ; i < *pidcount ; i++) {
         sprintf(statname,"/proc/%d/stat", pidtab[i].pid);
         if ((fp = fopen(statname, "r")) != NULL) {
        	    printf("pid %d OK \n", pidtab[i].pid);
@@ -160,9 +141,58 @@ int main(int argc, char *argv[])
             }
 	else {
        	    printf("pid %d does not exist \n", pidtab[i].pid);
-	    exit(-1);
+	    pidtab[i].ok = 0;
 	}
     }
+}
+
+/*
+ * check_args
+ */
+
+void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pidlist)
+{
+    int c;
+
+    progname = argv[0];
+    *pidlist = NULL;
+    while ((c = getopt(argc,argv,"p:s:hv")) != -1) {
+	switch (c) {
+	    case 's':
+		*sleeptime = atoi(optarg);
+		break;
+	    case 'v':
+		(*verbose)++;
+		break;
+	    case 'p':
+		*pidlist = optarg;
+		break;
+	    default:
+		usage();
+	}
+    }
+
+    if (optind != argc) {
+	    usage();
+    }
+
+    if (pidlist == NULL) {
+	    usage();
+    }
+
+}	
+
+int main(int argc, char *argv[])
+{
+    int i, pid_processed_count = 0;
+    int sleeptime = 1;
+    int verbose = 0;
+    char *pidlist;
+    int pidcount;
+
+    check_args(argc, argv, &sleeptime, &verbose, &pidlist); 
+
+    init_pidtab(pidlist, &pidcount);
 
     /*
      * now just spin collecting the stats
