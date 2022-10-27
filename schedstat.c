@@ -39,9 +39,8 @@ typedef struct piddata {
  */
 
 piddata  pidtab[MAX_PROCS];
-char *progname;
 
-void usage()
+void usage(char *progname)
 {
     fprintf(stderr,"Usage: %s [-s sleeptime ] [-v] -p <pid,pid,...>\n", progname);
     exit(-1);
@@ -96,15 +95,28 @@ void get_datetime(char *buf)
 }
 
 /*
+ * open_statname -- returns FILE pointer on /proc/<pid>/schedstat
+ */
+
+FILE *open_statname(int pid_index)
+{
+    char statname[STATNAME_MAX_LENGTH];
+
+    sprintf(statname,"/proc/%d/schedstat", pidtab[pid_index].pid);
+    return fopen(statname, "r");
+
+        
+}
+
+/*
  * init_pidtab -- initialize list of process identifiers
  */
 
-void init_pidtab(char *pidlist, int *pidcount)
+void init_pidtab(char *progname, char *pidlist, int *pidcount)
 {
     char *ptr;
     int i;
     FILE *fp;
-    char statname[STATNAME_MAX_LENGTH];
 
     ptr = pidlist; 
     i = 0;
@@ -112,7 +124,7 @@ void init_pidtab(char *pidlist, int *pidcount)
         while (*ptr && *ptr == ',') 
             ptr++;
 	if (!isdigit(*ptr)) {
-		usage();
+		usage(progname);
 	}
 	pidtab[i].pid = atoi(ptr);
 	pidtab[i].ok = 0;
@@ -131,8 +143,7 @@ void init_pidtab(char *pidlist, int *pidcount)
     *pidcount = i;
 
     for (i = 0 ; i < *pidcount ; i++) {
-        sprintf(statname,"/proc/%d/stat", pidtab[i].pid);
-        if ((fp = fopen(statname, "r")) != NULL) {
+        if ((fp = open_statname(i)) != NULL) {
        	    printf("pid %d OK \n", pidtab[i].pid);
 	    pidtab[i].ok = 1;
 	    fclose(fp);
@@ -151,6 +162,7 @@ void init_pidtab(char *pidlist, int *pidcount)
 void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pidlist)
 {
     int c;
+    char *progname;
 
     progname = argv[0];
     *pidlist = NULL;
@@ -166,16 +178,16 @@ void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pid
 		*pidlist = optarg;
 		break;
 	    default:
-		usage();
+		usage(progname);
 	}
     }
 
     if (optind != argc) {
-	    usage();
+	    usage(progname);
     }
 
     if (*pidlist == NULL) {
-	    usage();
+	    usage(progname);
     }
 
 }
@@ -220,12 +232,11 @@ int main(int argc, char *argv[])
     char *pidlist;
     int pidcount;
     FILE *fp;
-    char statname[STATNAME_MAX_LENGTH];
     char procbuf[PROCBUF_MAX_LENGTH];
 
     check_args(argc, argv, &sleeptime, &verbose, &pidlist); 
 
-    init_pidtab(pidlist, &pidcount);
+    init_pidtab(argv[0], pidlist, &pidcount);
 
     /*
      * now just spin collecting the stats
@@ -235,8 +246,7 @@ int main(int argc, char *argv[])
       for (i = 0 ; i < pidcount ; i++) {
 	if (pidtab[i].ok == 0)
 		continue;
-        sprintf(statname,"/proc/%d/schedstat", pidtab[i].pid);
-        if ((fp = fopen(statname, "r")) != NULL) {
+        if ((fp = open_statname(i)) != NULL) {
 	        if (!fgets(procbuf, sizeof(procbuf), fp)) {
 	            pidtab[i].ok = 0;
   	            printf("pid %d has exited \n", pidtab[i].pid);
