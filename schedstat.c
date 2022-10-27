@@ -38,12 +38,8 @@ typedef struct piddata {
  * global variables
  */
 
-char procbuf[PROCBUF_MAX_LENGTH];
-char statname[STATNAME_MAX_LENGTH];
-char datebuf[DATEBUF_MAX_LENGTH];
 piddata  pidtab[MAX_PROCS];
 char *progname;
-FILE *fp;
 
 void usage()
 {
@@ -107,6 +103,8 @@ void init_pidtab(char *pidlist, int *pidcount)
 {
     char *ptr;
     int i;
+    FILE *fp;
+    char statname[STATNAME_MAX_LENGTH];
 
     ptr = pidlist; 
     i = 0;
@@ -176,11 +174,43 @@ void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pid
 	    usage();
     }
 
-    if (pidlist == NULL) {
+    if (*pidlist == NULL) {
 	    usage();
     }
 
-}	
+}
+
+/*
+ * print_verbose
+ */
+void print_verbose(int pid_index)
+{
+    char datebuf[DATEBUF_MAX_LENGTH];
+
+    get_datetime(datebuf);
+    printf("%s %d run=%ldns wait=%ldns \n",
+	     datebuf,
+	     pidtab[pid_index].pid, 
+	     pidtab[pid_index].run_time, 
+	     pidtab[pid_index].wait_time);
+
+}
+
+/*
+ * print_delta
+ */
+void print_delta(int pid_index)
+{
+     char datebuf[DATEBUF_MAX_LENGTH];
+
+     get_datetime(datebuf);
+     printf("%s %d run=%ldns wait=%ldns\n",
+	     datebuf,
+	     pidtab[pid_index].pid,
+	     (pidtab[pid_index].run_time - pidtab[pid_index].old_run_time),
+	     (pidtab[pid_index].wait_time - pidtab[pid_index].old_wait_time));
+
+}
 
 int main(int argc, char *argv[])
 {
@@ -189,6 +219,9 @@ int main(int argc, char *argv[])
     int verbose = 0;
     char *pidlist;
     int pidcount;
+    FILE *fp;
+    char statname[STATNAME_MAX_LENGTH];
+    char procbuf[PROCBUF_MAX_LENGTH];
 
     check_args(argc, argv, &sleeptime, &verbose, &pidlist); 
 
@@ -212,18 +245,12 @@ int main(int argc, char *argv[])
 
 		pid_processed_count++;
 	        get_stats(procbuf, &pidtab[i].run_time, &pidtab[i].wait_time);
-	        get_datetime(datebuf);
 
 	        if (verbose)
-		     printf("%s %d %ld %ld \n",
-		         datebuf,
-		         pidtab[i].pid, pidtab[i].run_time, pidtab[i].wait_time);
+			print_verbose(i);
 	        else
-		    printf("%s %d run=%ldns wait=%ldns\n",
-		        datebuf,
-		        pidtab[i].pid,
-		       (pidtab[i].run_time - pidtab[i].old_run_time), 
-		       (pidtab[i].wait_time - pidtab[i].old_wait_time));
+			print_delta(i);
+
 	        fclose(fp);
 	        pidtab[i].old_run_time = pidtab[i].run_time;
 	        pidtab[i].old_wait_time = pidtab[i].wait_time;
