@@ -4,7 +4,10 @@
  *      schedstat measures the scheduling latency of a particular process from
  *	the information provided in /proc/<pid>/schedstat. 
  *
- *	Initial code:
+ *      This program is open source, licensed under the GPL.
+ *      For license terms, see the LICENSE file.
+ *
+ *	Original code:
  *	http://eaglet.pdxhosts.com/rick/linux/schedstat/v12/latency.c
  *	copyright Rick Lindsey 2004.
  *
@@ -33,12 +36,6 @@ typedef struct piddata {
 	unsigned long old_wait_time;
 
 } piddata;
-
-/*
- * global variables
- */
-
-piddata  pidtab[MAX_PROCS];
 
 void usage(char *progname)
 {
@@ -98,7 +95,7 @@ void get_datetime(char *buf)
  * open_statname -- returns FILE pointer on /proc/<pid>/schedstat
  */
 
-FILE *open_statname(int pid_index)
+FILE *open_statname(piddata *pidtab, int pid_index)
 {
     char statname[STATNAME_MAX_LENGTH];
 
@@ -112,12 +109,20 @@ FILE *open_statname(int pid_index)
  * init_pidtab -- initialize list of process identifiers
  */
 
-void init_pidtab(char *progname, char *pidlist, int *pidcount)
+piddata *init_pidtab(char *progname, char *pidlist, int *pidcount)
 {
     char *ptr;
     int i;
     FILE *fp;
+    piddata *pidtab;
 
+
+    pidtab = (piddata *)malloc(sizeof(piddata) * MAX_PROCS);
+    if (pidtab == NULL) {
+	printf("cannot allocated %ld bytes for pidtab \n", 
+		sizeof(piddata) *MAX_PROCS);
+	exit(-1);
+    }
     ptr = pidlist; 
     i = 0;
     while ( i < MAX_PROCS && ptr < pidlist + strlen(pidlist)) {
@@ -143,7 +148,7 @@ void init_pidtab(char *progname, char *pidlist, int *pidcount)
     *pidcount = i;
 
     for (i = 0 ; i < *pidcount ; i++) {
-        if ((fp = open_statname(i)) != NULL) {
+        if ((fp = open_statname(pidtab, i)) != NULL) {
        	    printf("pid %d OK \n", pidtab[i].pid);
 	    pidtab[i].ok = 1;
 	    fclose(fp);
@@ -153,6 +158,8 @@ void init_pidtab(char *progname, char *pidlist, int *pidcount)
 	    pidtab[i].ok = 0;
 	}
     }
+
+    return pidtab;
 }
 
 /*
@@ -195,7 +202,7 @@ void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pid
 /*
  * print_verbose
  */
-void print_verbose(int pid_index)
+void print_verbose(piddata *pidtab, int pid_index)
 {
     char datebuf[DATEBUF_MAX_LENGTH];
 
@@ -211,7 +218,7 @@ void print_verbose(int pid_index)
 /*
  * print_delta
  */
-void print_delta(int pid_index)
+void print_delta(piddata *pidtab, int pid_index)
 {
      char datebuf[DATEBUF_MAX_LENGTH];
 
@@ -233,10 +240,11 @@ int main(int argc, char *argv[])
     int pidcount;
     FILE *fp;
     char procbuf[PROCBUF_MAX_LENGTH];
+    piddata *pidtab;
 
     check_args(argc, argv, &sleeptime, &verbose, &pidlist); 
 
-    init_pidtab(argv[0], pidlist, &pidcount);
+    pidtab = init_pidtab(argv[0], pidlist, &pidcount);
 
     /*
      * now just spin collecting the stats
@@ -246,7 +254,7 @@ int main(int argc, char *argv[])
       for (i = 0 ; i < pidcount ; i++) {
 	if (pidtab[i].ok == 0)
 		continue;
-        if ((fp = open_statname(i)) != NULL) {
+        if ((fp = open_statname(pidtab, i)) != NULL) {
 	        if (!fgets(procbuf, sizeof(procbuf), fp)) {
 	            pidtab[i].ok = 0;
   	            printf("pid %d has exited \n", pidtab[i].pid);
@@ -257,20 +265,20 @@ int main(int argc, char *argv[])
 	        get_stats(procbuf, &pidtab[i].run_time, &pidtab[i].wait_time);
 
 	        if (verbose)
-			print_verbose(i);
+			print_verbose(pidtab, i);
 	        else
-			print_delta(i);
+			print_delta(pidtab, i);
 
 	        fclose(fp);
 	        pidtab[i].old_run_time = pidtab[i].run_time;
 	        pidtab[i].old_wait_time = pidtab[i].wait_time;
-	        sleep(sleeptime);
         }
 	else {
 	    pidtab[i].ok = 0;
 	    printf("pid %d has exited \n", pidtab[i].pid);
       }
     }
+    sleep(sleeptime);
     if (pid_processed_count == 0) {
 	    printf("all processes have exited.\n") ;
 	    exit(0);
