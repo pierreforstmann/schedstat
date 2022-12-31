@@ -1,7 +1,7 @@
 /*
  *      schedstat.c
  *
- *      schedstat measures the scheduling latency of a particular process from
+ *      schedstat measures the scheduling latency of some processes from
  *	the information provided in /proc/<pid>/schedstat. 
  *
  *      This program is open source, licensed under the GPL.
@@ -27,7 +27,7 @@
 #define DATEBUF_MAX_LENGTH	20
 #define MAX_PROCS		64
 
-typedef struct piddata {
+typedef struct data {
 	int pid;
 	int ok;
 	unsigned long run_time;
@@ -35,7 +35,7 @@ typedef struct piddata {
 	unsigned long old_run_time;
 	unsigned long old_wait_time;
 
-} piddata;
+} data;
 
 void usage(char *progname)
 {
@@ -44,11 +44,11 @@ void usage(char *progname)
 }
 
 /*
- * get_stats() -- we presume that we are interested in the first three
+ * get_pid_stats() -- we presume that we are interested in the first three
  *	fields of the line we are handed, and further, that they contain
  *	only numbers and single spaces.
  */
-void get_stats(char *buf, unsigned long *run_time, unsigned long *wait_time)
+void get_pid_stats(char *buf, unsigned long *run_time, unsigned long *wait_time)
 {
     char *ptr;
 
@@ -78,6 +78,88 @@ void get_stats(char *buf, unsigned long *run_time, unsigned long *wait_time)
 }
 
 /*
+ * get_cpu_stats() -- we presume that we are interested in the 7th and 8th
+ *	fields of the line we are handed, and further, that they contain
+ *	only a leading string followed by numbers and single spaces.
+ */
+
+void get_cpu_stats(unsigned long *total_run_time, unsigned long *total_wait_time)
+{
+    char procbuf[PROCBUF_MAX_LENGTH];
+    FILE *fp;
+    char *ptr;
+    int i;
+    int done = 0;
+
+    unsigned long run_time;
+    unsigned long wait_time;
+
+    *total_run_time = 0;
+    *total_wait_time = 0;
+
+    /* sanity */
+    if (!total_run_time || !total_wait_time)
+        return;
+
+    if ((fp = fopen("/proc/schedstat", "r")) == NULL) {
+	printf("Cannot open /proc/schedstat");
+	exit(1);
+    }
+ 
+    while (done == 0)
+    {
+        if (fgets(procbuf, sizeof(procbuf), fp) == NULL) {
+	    done = 1;
+	    break;
+	}
+
+	if (strstr(procbuf, "version") != NULL)
+            continue;
+
+	if (strstr(procbuf, "timestamp") != NULL)
+            continue;
+
+	if (strstr(procbuf, "domain") != NULL)
+            continue;
+
+	if (strstr(procbuf, "cpu") != NULL) {
+
+          ptr = procbuf;
+          while (*ptr && (isdigit(*ptr) || isalpha(*ptr)))
+            ptr++;
+          for (i = 1; i <= 6 ; i++)
+          {
+            while (*ptr && isblank(*ptr))
+              ptr++;
+            while (*ptr && isdigit(*ptr))
+              ptr++;
+          }
+
+          /* 7th number -- run_time */
+          while (*ptr && isblank(*ptr))
+            ptr++;
+          run_time = atol(ptr);
+          while (*ptr && isdigit(*ptr))
+            ptr++;
+
+          /* 8th number -- wait_time */
+          while (*ptr && isblank(*ptr))
+            ptr++;
+          wait_time = atol(ptr);
+          while (*ptr && isdigit(*ptr))
+             ptr++;
+
+	  *total_run_time += run_time;
+	  *total_wait_time += wait_time;
+	  
+	}
+    }
+
+    fclose(fp);
+
+}
+
+/*
  * get_datetime -- get current date and time
  */
 
@@ -95,7 +177,7 @@ void get_datetime(char *buf)
  * open_statname -- returns FILE pointer on /proc/<pid>/schedstat
  */
 
-FILE *open_statname(piddata *pidtab, int pid_index)
+FILE *open_statname(data *pidtab, int pid_index)
 {
     char statname[STATNAME_MAX_LENGTH];
 
@@ -109,18 +191,18 @@ FILE *open_statname(piddata *pidtab, int pid_index)
  * init_pidtab -- initialize list of process identifiers
  */
 
-piddata *init_pidtab(char *progname, char *pidlist, int *pidcount)
+data *init_pidtab(char *progname, char *pidlist, int *pidcount)
 {
     char *ptr;
     int i;
     FILE *fp;
-    piddata *pidtab;
+    data *pidtab;
 
 
-    pidtab = (piddata *)malloc(sizeof(piddata) * MAX_PROCS);
+    pidtab = (data *)malloc(sizeof(data) * MAX_PROCS);
     if (pidtab == NULL) {
 	printf("cannot allocated %ld bytes for pidtab \n", 
-		sizeof(piddata) *MAX_PROCS);
+		sizeof(data) *MAX_PROCS);
 	exit(-1);
     }
     ptr = pidlist; 
@@ -202,32 +284,32 @@ void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pid
 /*
  * print_verbose
  */
-void print_verbose(piddata *pidtab, int pid_index)
+void print_verbose(data *tab, int index)
 {
     char datebuf[DATEBUF_MAX_LENGTH];
 
     get_datetime(datebuf);
     printf("%s %d run=%ldns wait=%ldns \n",
 	     datebuf,
-	     pidtab[pid_index].pid, 
-	     pidtab[pid_index].run_time, 
-	     pidtab[pid_index].wait_time);
+	     tab[index].pid, 
+	     tab[index].run_time, 
+	     tab[index].wait_time);
 
 }
 
 /*
  * print_delta
  */
-void print_delta(piddata *pidtab, int pid_index)
+void print_delta(data *tab, int index)
 {
      char datebuf[DATEBUF_MAX_LENGTH];
 
      get_datetime(datebuf);
-     printf("%s %d run=%ldns wait=%ldns\n",
+     printf("%s pid=%d run=%ldns wait=%ldns\n",
 	     datebuf,
-	     pidtab[pid_index].pid,
-	     (pidtab[pid_index].run_time - pidtab[pid_index].old_run_time),
-	     (pidtab[pid_index].wait_time - pidtab[pid_index].old_wait_time));
+	     tab[index].pid,
+	     (tab[index].run_time - tab[index].old_run_time),
+	     (tab[index].wait_time - tab[index].old_wait_time));
 
 }
 
@@ -240,11 +322,17 @@ int main(int argc, char *argv[])
     int pidcount;
     FILE *fp;
     char procbuf[PROCBUF_MAX_LENGTH];
-    piddata *pidtab;
+    data *pidtab;
+    data cpustats;
 
     check_args(argc, argv, &sleeptime, &verbose, &pidlist); 
 
     pidtab = init_pidtab(argv[0], pidlist, &pidcount);
+    cpustats.pid = 0;
+    cpustats.run_time = 0;
+    cpustats.wait_time = 0;
+    cpustats.old_run_time = 0;
+    cpustats.old_wait_time = 0;
 
     /*
      * now just spin collecting the stats
@@ -262,7 +350,7 @@ int main(int argc, char *argv[])
 		}
 
 		pid_processed_count++;
-	        get_stats(procbuf, &pidtab[i].run_time, &pidtab[i].wait_time);
+	        get_pid_stats(procbuf, &pidtab[i].run_time, &pidtab[i].wait_time);
 
 	        if (verbose)
 			print_verbose(pidtab, i);
@@ -272,6 +360,15 @@ int main(int argc, char *argv[])
 	        fclose(fp);
 	        pidtab[i].old_run_time = pidtab[i].run_time;
 	        pidtab[i].old_wait_time = pidtab[i].wait_time;
+
+		get_cpu_stats(&cpustats.run_time, &cpustats.wait_time);
+		printf("-------- all cpus run=%ldns wait=%ldns\n",
+                       (cpustats.run_time - cpustats.old_run_time),
+                       (cpustats.wait_time - cpustats.old_wait_time));
+		cpustats.old_run_time = cpustats.run_time;
+		cpustats.old_wait_time = cpustats.wait_time;
+
+
         }
 	else {
 	    pidtab[i].ok = 0;

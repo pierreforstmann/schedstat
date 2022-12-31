@@ -4,4 +4,4 @@ schedstat: schedstat.c
 debug: schedstat.c
 	$(CC) -g -std=gnu99 -Wall -o $@ $<
 clean: 
-	rm -f schedstat 
+	rm -f schedstat debug
