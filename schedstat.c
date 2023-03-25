@@ -12,7 +12,7 @@
  *	copyright Rick Lindsey 2004.
  *
  *	Modified code:
- *	copyright Pierre Forstmann 2022.
+ *	copyright Pierre Forstmann 2022, 2023.
  */
 #include <time.h>
 #include <stdio.h>
@@ -39,7 +39,8 @@ typedef struct data {
 
 void usage(char *progname)
 {
-    fprintf(stderr,"Usage: %s [-s sleeptime ] [-v] -p <pid,pid,...>\n", progname);
+    fprintf(stderr,"Usage: %s [-a ] [-s sleeptime ] [-v] -p <pid,pid,...>\n", progname);
+    fprintf(stderr,"use -a to print only all CPU stats. Do not use -a with -p.\n");
     exit(-1);
 }
 
@@ -248,14 +249,15 @@ data *init_pidtab(char *progname, char *pidlist, int *pidcount)
  * check_args
  */
 
-void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pidlist)
+void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pidlist, int *option_a_is_used)
 {
     int c;
     char *progname;
+    int option_p_is_used = 0; 
 
     progname = argv[0];
     *pidlist = NULL;
-    while ((c = getopt(argc,argv,"p:s:hv")) != -1) {
+    while ((c = getopt(argc,argv,"p:s:hva")) != -1) {
 	switch (c) {
 	    case 's':
 		*sleeptime = atoi(optarg);
@@ -264,7 +266,11 @@ void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pid
 		(*verbose)++;
 		break;
 	    case 'p':
+		option_p_is_used = 1;
 		*pidlist = optarg;
+		break;
+	    case 'a':
+		*option_a_is_used = 1;
 		break;
 	    default:
 		usage(progname);
@@ -275,7 +281,11 @@ void check_args(int argc, char *argv[], int *sleeptime, int *verbose, char **pid
 	    usage(progname);
     }
 
-    if (*pidlist == NULL) {
+    if (*pidlist == NULL && *option_a_is_used == 0) {
+	    usage(progname);
+    }
+
+    if (*option_a_is_used == 1 &&  option_p_is_used == 1) {
 	    usage(progname);
     }
 
@@ -313,21 +323,44 @@ void print_delta(data *tab, int index)
 
 }
 
+/*
+ * print_all_cpu_delta
+ */
+void print_all_cpu_delta(data *tab)
+{
+     char datebuf[DATEBUF_MAX_LENGTH];
+
+     get_datetime(datebuf);
+     get_cpu_stats(&tab[0].run_time, &tab[0].wait_time);
+     printf("%s all cpus run=%ldns wait=%ldns\n",
+             datebuf,
+            (tab[0].run_time - tab[0].old_run_time),
+            (tab[0].wait_time - tab[0].old_wait_time));
+     tab[0].old_run_time = tab[0].run_time;
+     tab[0].old_wait_time = tab[0].wait_time;
+}
+
 int main(int argc, char *argv[])
 {
     int i, pid_processed_count = 0;
     int sleeptime = 1;
     int verbose = 0;
     char *pidlist;
-    int pidcount;
+    int pidcount = 0;
     FILE *fp;
     char procbuf[PROCBUF_MAX_LENGTH];
     data *pidtab;
     data cpustats;
+    int option_a_is_used = 0;
 
-    check_args(argc, argv, &sleeptime, &verbose, &pidlist); 
+    check_args(argc, argv, &sleeptime, &verbose, &pidlist, &option_a_is_used); 
 
-    pidtab = init_pidtab(argv[0], pidlist, &pidcount);
+    if (option_a_is_used == 0) {
+    	pidtab = init_pidtab(argv[0], pidlist, &pidcount);
+    }
+    else {
+	pidtab = NULL;
+    }
     cpustats.pid = 0;
     cpustats.run_time = 0;
     cpustats.wait_time = 0;
@@ -361,25 +394,23 @@ int main(int argc, char *argv[])
 	        pidtab[i].old_run_time = pidtab[i].run_time;
 	        pidtab[i].old_wait_time = pidtab[i].wait_time;
 
-		get_cpu_stats(&cpustats.run_time, &cpustats.wait_time);
-		printf("-------- all cpus run=%ldns wait=%ldns\n",
-                       (cpustats.run_time - cpustats.old_run_time),
-                       (cpustats.wait_time - cpustats.old_wait_time));
-		cpustats.old_run_time = cpustats.run_time;
-		cpustats.old_wait_time = cpustats.wait_time;
-
-
+	        print_all_cpu_delta(&cpustats);
         }
 	else {
 	    pidtab[i].ok = 0;
 	    printf("pid %d has exited \n", pidtab[i].pid);
       }
     }
+
     sleep(sleeptime);
-    if (pid_processed_count == 0) {
-	    printf("all processes have exited.\n") ;
-	    exit(0);
+
+    if (option_a_is_used == 0 && pid_processed_count == 0) {
+         printf("all processes have exited.\n") ;
+	 exit(0);
+    } else if (option_a_is_used == 1) {
+	print_all_cpu_delta(&cpustats);
     }
+
   }
   exit(0);
 }
